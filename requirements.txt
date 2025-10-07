@@ -1,0 +1,11 @@
+# pip install -r requirements.txt
+
+Django==5.2.4
+django-cors-headers==4.7.0
+djangorestframework==3.16.0
+pillow==11.3.0
+PyJWT==2.10.1
+django-jazzmin @ git+https://github.com/farridav/django-jazzmin.git@d269874c96fe5ff6d231c3017cdd4650bc2f3105
+django-summernote==0.8.20.0
+djangorestframework_simplejwt==5.5.1
+mysqlclient==2.2.7
