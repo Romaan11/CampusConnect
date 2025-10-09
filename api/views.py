@@ -126,6 +126,7 @@ class RegisterView(generics.CreateAPIView):
         # Generate JWT tokens for the new user
         refresh = RefreshToken.for_user(user)
         return Response({
+            "message": "Registration Successful! Welcome aboard.",
             "user": UserSerializer(user).data,
             "profile": ProfileSerializer(user.profile).data,
             "refresh": str(refresh),
@@ -162,6 +163,7 @@ class LoginView(APIView):
 
         refresh = RefreshToken.for_user(user)
         return Response({
+            "message": f"Logged in successfully! Welcome back, {user.username}.",
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         })
