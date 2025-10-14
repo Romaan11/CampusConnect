@@ -167,6 +167,7 @@ class LoginView(APIView):
     Login with email and password.
     Returns JWT tokens.
     """
+    permission_classes = [AllowAny]
     serializer_class = EmailLoginSerializer  #Important for browsable API form
 
     def post(self, request):
@@ -191,7 +192,7 @@ class LoginView(APIView):
             "message": f"Logged in successfully! Welcome back, {user.username}.",
             "refresh": str(refresh),
             "access": str(refresh.access_token),
-        })
+        },status=status.HTTP_200_OK)
 
 
 
@@ -271,19 +272,42 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     #     return self.request.user.profile
 
 @method_decorator(csrf_exempt, name='dispatch')
-class LogoutView(generics.GenericAPIView):
+class LogoutView(APIView):
     """
-    Endpoint for logging out users by blacklisting their refresh token.
+    Logout endpoint that blacklists the user's refresh token.
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
+        refresh_token = request.data.get("refresh")
+
+        if not refresh_token:
+            return Response(
+                {"error": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
-            refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"detail": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
+            return Response(
+                {"detail": "Successfully logged out."},
+                status=status.HTTP_205_RESET_CONTENT
+            )
         except Exception:
-            return Response({"error": "Invalid token or already blacklisted."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Invalid or already blacklisted token."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+
+    # def post(self, request):
+    #     try:
+    #         refresh_token = request.data["refresh"]
+    #         token = RefreshToken(refresh_token)
+    #         token.blacklist()
+    #         return Response({"detail": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
+    #     except Exception:
+    #         return Response({"error": "Invalid token or already blacklisted."}, status=status.HTTP_400_BAD_REQUEST)
 
 

@@ -152,6 +152,12 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
 CORS_ALLOW_ALL_ORIGINS = True
+# Later for production, you’ll replace it with specific allowed domains:
+
+# CORS_ALLOWED_ORIGINS = [
+#     "https://yourdomain.com",
+#     "https://notice-app.vercel.app",
+# ]
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -166,5 +172,16 @@ REST_FRAMEWORK = {
 
 AUTH_USER_MODEL = 'auth.User'
 
-MEDIA_URLS = '/media/'
+from datetime import timedelta
+
+MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),   # Short-lived access token
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),      # User stays logged in for 7 days
+    'ROTATE_REFRESH_TOKENS': False,                   # Don’t auto-rotate tokens
+    'BLACKLIST_AFTER_ROTATION': True,                 # Allow logout blacklisting
+    'AUTH_HEADER_TYPES': ('Bearer',),                 # Use Bearer <token> format
+}
+# You can increase REFRESH_TOKEN_LIFETIME to timedelta(days=30) if you want users to stay logged in for a month.
