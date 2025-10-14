@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db.models import Q
 
@@ -112,6 +113,8 @@ class RegisterView(generics.CreateAPIView):
     """
     Endpoint for registering new users.
     Publicly accessible.
+    Validates entered details against AdmissionRecord.
+    If successful, creates both User and Profile.
     """
 
     queryset = User.objects.all()  # always define queryset for CreateAPIView
@@ -120,18 +123,40 @@ class RegisterView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
 
-        # Generate JWT tokens for the new user
-        refresh = RefreshToken.for_user(user)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = serializer.save()  # This already creates the Profile inside serializer
+
+        # Optional: prepare a custom response
+        profile = Profile.objects.filter(user=user).first()
+        profile_data = {
+            "name": profile.name,
+            "email": user.email,
+            "semester": profile.semester,
+            "roll_no": profile.roll_no,
+            "shift": profile.shift,
+        }
+
         return Response({
-            "message": "Registration Successful! Welcome aboard.",
-            "user": UserSerializer(user).data,
-            "profile": ProfileSerializer(user.profile).data,
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
+            "message": "Registration successful.",
+            "user": user.email,
+            "profile": profile_data
         }, status=status.HTTP_201_CREATED)
+
+        # serializer.is_valid(raise_exception=True)
+        # user = serializer.save()
+
+        # # Generate JWT tokens for the new user
+        # refresh = RefreshToken.for_user(user)
+        # return Response({
+        #     "message": "Registration Successful! Welcome aboard.",
+        #     "user": UserSerializer(user).data,
+        #     "profile": ProfileSerializer(user.profile).data,
+        #     "refresh": str(refresh),
+        #     "access": str(refresh.access_token),
+        # }, status=status.HTTP_201_CREATED)
     
 
 
@@ -195,12 +220,52 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [IsAuthenticated]
 
+
     def get_object(self):
         user = self.request.user
-        # If profile doesn’t exist, create one lazily
-        if not hasattr(user, "profile"):
-            return Profile.objects.create(user=user)
-        return user.profile
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            raise NotFound("Profile not found for this user. Please register first.")
+        return profile
+    # def get_object(self):
+    #     user = self.request.user
+    #     # Only return existing profile
+    #     profile = getattr(user, "profile", None)
+    #     if profile is None:
+    #         # Don't auto-create empty profiles — just return 404
+    #         raise Response(
+    #             {"error": "Profile not found for this user. Please register first."},
+    #             status=status.HTTP_404_NOT_FOUND
+    #         )
+    #     return profile
+
+    def get(self, request, *args, **kwargs):
+        """
+        Override GET to return a proper error message if no profile exists.
+        """
+        user = request.user
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            return Response(
+                {"error": "Profile not found for this user. Please register first."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
+# class ProfileView(generics.RetrieveUpdateAPIView):
+#     """
+#     API for logged-in users to view and update their profile.
+#     """
+#     serializer_class = ProfileSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_object(self):
+#         user = self.request.user
+#         # If profile doesn’t exist, create one lazily
+#         if not hasattr(user, "profile"):
+#             return Profile.objects.create(user=user)
+#         return user.profile
 
     # def get_object(self):
     #     return self.request.user.profile

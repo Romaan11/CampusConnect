@@ -42,16 +42,16 @@ class Profile(models.Model):
     #     ("day", "Day"),
     # ]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
-    name = models.CharField(max_length=100)
-    email = models.EmailField(unique=True)
+    user = models.OneToOneField(User, on_delete=models.CASCADE) #, related_name="profile"
+    name = models.CharField(max_length=255)
+    # email = models.EmailField(unique=True, blank=True, null=True)
     roll_no = models.CharField(max_length=50, unique=True)
-    semester = models.PositiveIntegerField()
+    semester = models.IntegerField()
     # keep dob as text field so user types BS date (YYYY/MM/DD)
     dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (BS)") 
     # dob = models.CharField(max_length=12, null=True, blank=True)
     # dob = models.DateField(null=True, blank=True)
-    address = models.TextField(blank=True)
+    address = models.CharField(blank=True, max_length=255)
     image = models.ImageField(upload_to="profile_images/", null=True, blank=True)
     shift = models.CharField(max_length=10, help_text="Type either 'morning' or 'day' manually" ) #choices=SHIFT_CHOICES,default="day"
 

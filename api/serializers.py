@@ -7,6 +7,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from datetime import timedelta, datetime
 
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
+
 
 # -------------------- PROFILE --------------------
 class ProfileSerializer(serializers.ModelSerializer):
@@ -15,7 +18,9 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['name', 'email', 'roll_no', 'semester', 'dob', 'address', 'image', 'shift']
+        fields = ['name', 'roll_no', 'semester', 'dob', 'address', 'image', 'shift']    # 'email',
+
+ 
 
     # def validate_dob(self, value):
     #     """Validate DOB format: YYYY/MM/DD (BS)."""
@@ -42,7 +47,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 # -------------------- USERS --------------------
 class UserSerializer(serializers.ModelSerializer):
-    profile = ProfileSerializer(read_only=True)
+    profile = ProfileSerializer(read_only=True)     
 
     class Meta:
         model = User
@@ -117,6 +122,26 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
+        # return attrs
+    
+        # Ensure profile block exists and required fields are present
+        profile_data = attrs.get('profile')
+        if not profile_data:
+            raise serializers.ValidationError({"profile": "Profile data is required."})
+
+        required = ['name', 'roll_no', 'semester', 'dob', 'address', 'shift']
+        missing = [f for f in required if not profile_data.get(f) and profile_data.get(f) != 0]
+        if missing:
+            raise serializers.ValidationError({"profile": f"Missing profile fields: {', '.join(missing)}"})
+
+        # Validate semester can be coerced to int
+        sem = profile_data.get('semester')
+        try:
+            # allow strings like "7"
+            int(str(sem).strip())
+        except Exception:
+            raise serializers.ValidationError({"profile": {"semester": "Semester must be an integer."}})
+
         return attrs
     
 
@@ -141,79 +166,101 @@ class RegisterSerializer(serializers.ModelSerializer):
                 {"email": "No admission record found for this email."}
             )
 
-        # Check if other details match
+        # Check if entered profile info with AdmissionRecord
         errors = {}
         # if admission.dob != dob:
         #     errors["dob"] = "Date of birth does not match our records."
         if admission.name != profile_data.get('name'):
             errors["name"] = "Name does not match Admission Records."
         if admission.roll_no != profile_data.get('roll_no'):
-            errors["roll_no"] = "Roll number does not match Admission Records."            
-        if str(admission.semester) != str(profile_data.get('semester')):
+            errors["roll_no"] = "Roll number does not match Admission Records."    
+
+        # Normalize semester comparison
+        try:
+            provided_sem = int(str(profile_data.get('semester')).strip())
+        except Exception:
+            provided_sem = None
+        if provided_sem is None or int(admission.semester) != provided_sem:
             errors["semester"] = "Semester does not match Admission Record."
+        # if str(admission.semester) != str(profile_data.get('semester')):
+        #     errors["semester"] = "Semester does not match Admission Record."
         if admission.dob.strip() != profile_data.get('dob').strip():
             errors["dob"] = "Date of Birth does not match Admission Record."
         if admission.address.strip().lower() != profile_data.get('address').strip().lower():
             errors["address"] = "Address does not match Admission Record."
-        if admission.shift.lower() != profile_data.get('shift').lower():
+        # if admission.shift.lower() != profile_data.get('shift').lower():
+        if admission.shift.strip().lower() != profile_data.get('shift').strip().lower():
             errors["shift"] = "Shift must be 'morning' or 'day' (matching Admission Record)."
 
-        # # Convert provided DOB to comparable date
-        # try:
-        #     year, month, day = map(int, dob_text.split('/'))
-        #     dob_date = datetime(year, month, day).date()
-        # except Exception:
-        #     raise serializers.ValidationError({"dob": "Invalid DOB format (use YYYY/MM/DD)."})
-        # if admission.dob != dob_date:
-        #     errors["dob"] = "DOB does not match our records."
-
-
         if errors:
-            raise serializers.ValidationError(errors)
+            # raise serializers.ValidationError(errors)
+            raise ValidationError(errors)
 
 
-        # 2. Create user
-        user = User.objects.create_user(
-            username=profile_data.get('name'),
-            email=email,
-            password=password
-        )
-        user.is_staff = False  # not admin
-        user.save()
+        # ensure username uniqueness (derive from name, fallback to email part)
+        base_username = profile_data.get('name') or email.split("@")[0]
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
 
-        # Create verified profile
-        Profile.objects.create(user=user, **profile_data)
-        
+        # Convert semester to int for Profile creation (guaranteed by prior checks)
+        semester_int = int(str(profile_data.get('semester')).strip())
+
+        # Debug print
+        print("PROFILE DATA:", profile_data)
+        print("SEMESTER VALUE BEFORE SAVE:", repr(profile_data.get('semester')))
+
+        # Create both user and profile atomically to avoid partial creation
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password
+            )
+            user.is_staff = False
+            user.save()
+
+            # Create verified profile
+            Profile.objects.create(
+                user=user,
+                name=profile_data.get('name'),
+                roll_no=profile_data.get('roll_no'),
+                semester=semester_int,
+                dob=profile_data.get('dob'),
+                address=profile_data.get('address'),
+                image=profile_data.get('image', None),
+                shift=profile_data.get('shift')
+            )
+
         return user
 
-    # def create(self, validated_data):
-    #     from api.models import AdmissionRecord  # import inside for safety
+        # # 2. Create user
+        # user = User.objects.create_user(
+        #     username=profile_data.get('name'),
+        #     email=email,
+        #     password=password
+        # )
+        # user.is_staff = False  # not admin
+        # user.save()
 
-    #     profile_data = validated_data.pop('profile')
-    #     email = validated_data['email']
-    #     password = validated_data['password']
 
-    #     # Extract username from email
-    #     base_username = email.split("@")[0]
-    #     username = base_username
-    #     counter = 1
-    #     while User.objects.filter(username=username).exists():
-    #         username = f"{base_username}{counter}"
-    #         counter += 1
+        # # Create verified profile — use admission.semester to avoid null errors
+        # Profile.objects.create(
+        #     user=user,
+        #     name=profile_data.get('name'),
+        #     roll_no=profile_data.get('roll_no'),
+        #     semester=profile_data.get('semester'),
+        #     # semester=admission.semester,  # ensures not null
+        #     dob=profile_data.get('dob'),
+        #     address=profile_data.get('address'),
+        #     image=profile_data.get('image', None),
+        #     shift=profile_data.get('shift')
+        # )
 
-    #     # Create user
-    #     user = User.objects.create_user(
-    #         username=username,
-    #         email=email,
-    #         password=password
-    #     )
-    #     user.is_staff = False
-    #     user.save()
+        # return user
 
-    #     # Create profile for this user
-    #     Profile.objects.create(user=user, **profile_data)
-
-    #     return user
 
 
 # -------------------- EMAIL LOGIN --------------------
