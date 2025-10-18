@@ -1,7 +1,7 @@
 
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.reverse import reverse
@@ -52,10 +52,11 @@ urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
     path('auth/login/', views.LoginView.as_view(), name='login'),   # use custom login
     path('auth/logout/', views.LogoutView.as_view(), name='logout'), # custom logout
-    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),  # login
+    path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # refresh token
     path('auth/profile/', views.ProfileView.as_view(), name='profile'),
 
-    # Optional: DRF Browsable API login/logout
+    # Optional: DRF Browsable API login/logout 
     path('api-auth/', include('rest_framework.urls', namespace='rest_framework')),   #for login in the rest api
 ]
 

@@ -17,6 +17,7 @@ from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, R
 
 from .models import Notice, Routine, Profile
 from .permissions import IsAdminUser, ReadOnly
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser #later added
 
 class UserViewSet(viewsets.ModelViewSet):
     """
@@ -120,6 +121,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()  # always define queryset for CreateAPIView
     serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]      #later added
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

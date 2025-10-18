@@ -43,12 +43,14 @@ class Profile(models.Model):
     # ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE) #, related_name="profile"
-    name = models.CharField(max_length=255)
+    first_name = models.CharField(max_length=100, default="")
+    last_name = models.CharField(max_length=100, default="")
+    name = models.CharField(max_length=255)  # Combined name for display
     # email = models.EmailField(unique=True, blank=True, null=True)
     roll_no = models.CharField(max_length=50, unique=True)
     semester = models.IntegerField()
     # keep dob as text field so user types BS date (YYYY/MM/DD)
-    dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (BS)") 
+    dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (AD)") 
     # dob = models.CharField(max_length=12, null=True, blank=True)
     # dob = models.DateField(null=True, blank=True)
     address = models.CharField(blank=True, max_length=255)
@@ -61,14 +63,15 @@ class Profile(models.Model):
 # This table stores admission data (used for verification)    
 #yo already existed table ho and yo model ko data fetch garera verify garxa app ma register garda
 class AdmissionRecord(models.Model):
-    name = models.CharField(max_length=100)
+    first_name = models.CharField(max_length=100, default="")
+    last_name = models.CharField(max_length=100, default="")
     email = models.EmailField(unique=True)
     roll_no = models.CharField(max_length=50, unique=True)
     semester = models.PositiveIntegerField()
-    dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (BS)")  # BS format (YYYY/MM/DD)
+    dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (AD)")  # AD format (YYYY/MM/DD)
     address = models.TextField()
     shift = models.CharField(max_length=10) #choices=Profile.SHIFT_CHOICES,  default="day"
 
     def __str__(self):
-        return f"Admission Record for {self.name} ({self.roll_no})"
+        return f"Admission Record for {self.first_name} {self.last_name} ({self.roll_no})"
         # return f"Admission Record: {self.roll_no} - {self.name}"  
