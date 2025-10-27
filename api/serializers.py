@@ -1,5 +1,5 @@
 from django.contrib.auth.models import Group, User
-from api.models import Notice, Routine, Profile, AdmissionRecord
+from api.models import Notice, Routine, Profile, AdmissionRecord, Event, DeviceToken
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate, get_user_model
@@ -18,7 +18,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Profile
-        fields = ['first_name', 'last_name', 'roll_no', 'semester', 'dob', 'address', 'image', 'shift']    # 'email', 'name',
+        fields = ['first_name', 'last_name', 'roll_no', 'semester', 'dob', 'address', 'image', 'shift', 'programme', 'contact_no']    # 'email', 'name',
         # read_only_fields = ['first_name', 'last_name','name', 'roll_no', 'semester', 'dob', 'address', 'shift']
 
  
@@ -104,6 +104,8 @@ class RegisterSerializer(serializers.ModelSerializer):
     dob = serializers.CharField()
     address = serializers.CharField()
     shift = serializers.CharField()
+    programme = serializers.CharField()     
+    contact_no = serializers.CharField()
     image = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
@@ -111,7 +113,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         fields = [
             'email', 'password', 'password2',
             'first_name', 'last_name', 'roll_no', 'semester',
-            'dob', 'address', 'shift', 'image'
+            'dob', 'address', 'shift', 'programme', 'contact_no', 'image'
         ]
 
     def validate_email(self, value):
@@ -126,11 +128,12 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['password2']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
 
-        required = ['first_name', 'last_name', 'roll_no', 'semester', 'dob', 'address', 'shift']
+        required = ['first_name', 'last_name', 'roll_no', 'semester', 'dob', 'address', 'shift', 'programme', 'contact_no']
         missing = [f for f in required if not attrs.get(f)]
         if missing:
             raise serializers.ValidationError({"profile": f"Missing fields: {', '.join(missing)}"})
-
+        
+        # Validate semester is int
         try:
             int(str(attrs.get('semester')).strip())
         except Exception:
@@ -152,6 +155,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             'dob': validated_data.pop('dob'),
             'address': validated_data.pop('address'),
             'shift': validated_data.pop('shift'),
+            'programme': validated_data.pop('programme'),
+            'contact_no': validated_data.pop('contact_no'),
             'image': validated_data.pop('image', None),
         }
 
@@ -183,6 +188,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             errors["address"] = "Address does not match Admission Record."
         if admission.shift.strip().lower() != profile_data.get('shift').strip().lower():
             errors["shift"] = "Shift must match Admission Record ('morning' or 'day')."
+        if admission.programme.strip().lower() != profile_data['programme'].strip().lower():
+            errors["programme"] = "Programme does not match Admission Record."
+        if admission.contact_no.strip() != profile_data['contact_no'].strip():
+            errors["contact_no"] = "Contact number does not match Admission Record."
 
         if errors:
             raise ValidationError(errors)
@@ -211,12 +220,15 @@ class RegisterSerializer(serializers.ModelSerializer):
                 first_name=profile_data['first_name'],
                 last_name=profile_data['last_name'],
                 name=f"{profile_data['first_name']} {profile_data['last_name']}",
+                email=email,
                 roll_no=profile_data['roll_no'],
                 semester=int(profile_data['semester']),
                 dob=profile_data['dob'],
                 address=profile_data['address'],
                 image=profile_data.get('image', None),
-                shift=profile_data['shift']
+                shift=profile_data['shift'],
+                programme=profile_data['programme'],
+                contact_no=profile_data['contact_no'],
             )
 
         return user
@@ -439,3 +451,22 @@ class RoutineSerializer(serializers.ModelSerializer):
     class Meta:
         model = Routine
         fields = '__all__'
+
+
+class EventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = '__all__'
+
+
+# class DeviceTokenSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = DeviceToken
+#         fields = '__all__'
+
+
+# class DeviceTokenSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = DeviceToken
+#         fields = ['id', 'token', 'user', 'created_at']
+#         read_only_fields = ['id', 'user', 'created_at']

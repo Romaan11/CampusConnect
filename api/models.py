@@ -1,6 +1,52 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+
+
+# # Added new DeviceToken model
+
+class DeviceToken(models.Model):
+    user = models.ForeignKey(
+        User, 
+        related_name='device_tokens', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True,
+        help_text="The user this device belongs to. Can be null if not logged in yet."
+    )
+    token = models.CharField(
+        max_length=255, 
+        unique=True,
+        help_text="The Firebase Cloud Messaging device token."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['user']),
+        ]
+        ordering = ['-last_seen']  # optional, newest active devices first
+
+    def __str__(self):
+        username = self.user.username if self.user else "Anonymous"
+        return f"{username} - {self.token[:20]}..."
+
+    def update_last_seen(self):
+        """Call this when the user opens the app to update last_seen timestamp."""
+        self.last_seen = timezone.now()
+        self.save(update_fields=['last_seen'])
+
+# class DeviceToken(models.Model):
+#     user = models.ForeignKey(User, related_name='device_tokens', on_delete=models.CASCADE, null=True, blank=True)
+#     token = models.CharField(max_length=255, unique=True)
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     last_seen = models.DateTimeField(auto_now=True)
+
+#     def __str__(self):
+#         return f"{self.user} - {self.token[:20]}"
+
+
 class Notice(models.Model):
     title = models.CharField(max_length=100)
     content = models.TextField()
@@ -46,7 +92,7 @@ class Profile(models.Model):
     first_name = models.CharField(max_length=100, default="")
     last_name = models.CharField(max_length=100, default="")
     name = models.CharField(max_length=255)  # Combined name for display
-    # email = models.EmailField(unique=True, blank=True, null=True)
+    email = models.EmailField(unique=True, blank=True, null=True)
     roll_no = models.CharField(max_length=50, unique=True)
     semester = models.IntegerField()
     # keep dob as text field so user types BS date (YYYY/MM/DD)
@@ -56,6 +102,8 @@ class Profile(models.Model):
     address = models.CharField(blank=True, max_length=255)
     image = models.ImageField(upload_to="profile_images/", null=True, blank=True)
     shift = models.CharField(max_length=10, help_text="Type either 'morning' or 'day' manually" ) #choices=SHIFT_CHOICES,default="day"
+    programme = models.CharField(max_length=100, default="")  
+    contact_no = models.CharField(max_length=15, default="")  
 
     def __str__(self):
         return f"{self.user.username}'s Profile"
@@ -65,13 +113,29 @@ class Profile(models.Model):
 class AdmissionRecord(models.Model):
     first_name = models.CharField(max_length=100, default="")
     last_name = models.CharField(max_length=100, default="")
-    email = models.EmailField(unique=True)
+    # email = models.EmailField(unique=True)
+    email = models.EmailField(unique=True, null=True, blank=True)
     roll_no = models.CharField(max_length=50, unique=True)
     semester = models.PositiveIntegerField()
     dob = models.CharField(max_length=20, help_text="Format: YYYY/MM/DD (AD)")  # AD format (YYYY/MM/DD)
     address = models.TextField()
     shift = models.CharField(max_length=10) #choices=Profile.SHIFT_CHOICES,  default="day"
+    programme = models.CharField(max_length=100, default="")  
+    contact_no = models.CharField(max_length=15, default="")
 
     def __str__(self):
         return f"Admission Record for {self.first_name} {self.last_name} ({self.roll_no})"
         # return f"Admission Record: {self.roll_no} - {self.name}"  
+
+
+class Event(models.Model):
+    event_title = models.CharField(max_length=200)
+    event_date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    event_detail = models.TextField()
+    location = models.CharField(max_length=255)
+    image = models.ImageField(upload_to="events/")
+    
+    def __str__(self):
+        return self.event_title

@@ -1,23 +1,30 @@
 
 from django.contrib.auth.models import Group, User
-from rest_framework import viewsets, generics, status
+from rest_framework import viewsets, generics, status, permissions, views
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q  
+from rest_framework.decorators import api_view, permission_classes
+from .utils import send_fcm_notification
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, RegisterSerializer, ProfileSerializer, EmailLoginSerializer
+from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, RegisterSerializer, ProfileSerializer, EmailLoginSerializer, EventSerializer
 
-from .models import Notice, Routine, Profile
+from .models import Notice, Routine, Profile, DeviceToken, Event
 from .permissions import IsAdminUser, ReadOnly
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser #later added
+# from NOTICE.firebase_config import firebase_admin
+# from firebase_admin import messaging
+
+
 
 class UserViewSet(viewsets.ModelViewSet):
     """
@@ -139,6 +146,9 @@ class RegisterView(generics.CreateAPIView):
             "semester": profile.semester,
             "roll_no": profile.roll_no,
             "shift": profile.shift,
+            "address": profile.address,
+            "contact_no": profile.contact_no,
+            "programme": profile.programme,
         }
 
         return Response({
@@ -163,10 +173,13 @@ class RegisterView(generics.CreateAPIView):
 
 
 # -------------------- LOGIN (email + password) --------------------
+User = get_user_model()
 @method_decorator(csrf_exempt, name='dispatch')
 class LoginView(APIView):
     """
     Login with email and password.
+    Accepts optional device_token from Flutter.
+    Saves or updates it for the logged-in user.
     Returns JWT tokens.
     """
     permission_classes = [AllowAny]
@@ -178,6 +191,7 @@ class LoginView(APIView):
 
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
+        device_token = request.data.get('device_token')  # ADDED for device token
 
         # Authenticate using email
         try:
@@ -188,6 +202,16 @@ class LoginView(APIView):
         user = authenticate(username=user.username, password=password)
         if user is None:
             return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Save or update device token
+        if device_token:
+            DeviceToken.objects.update_or_create(
+                token=device_token,
+                defaults={'user': user}
+            )
+
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
 
         refresh = RefreshToken.for_user(user)
         return Response({
@@ -219,36 +243,27 @@ class LoginView(APIView):
 class ProfileView(generics.RetrieveUpdateAPIView):
     """
     API for logged-in users to view and update their profile.
+    No other user (even logged in) can access someone else's profile.
     """
     serializer_class = ProfileSerializer
     permission_classes = [IsAuthenticated]
-
-
+    
+    # Corrected one
     def get_object(self):
+        # Always fetch the logged-in user's profile
         user = self.request.user
-        profile = getattr(user, "profile", None)
-        if profile is None:
+        try:
+            return user.profile
+        except Profile.DoesNotExist:
             raise NotFound("Profile not found for this user. Please register first.")
-        return profile
-    # def get_object(self):
-    #     user = self.request.user
-    #     # Only return existing profile
-    #     profile = getattr(user, "profile", None)
-    #     if profile is None:
-    #         # Don't auto-create empty profiles — just return 404
-    #         raise Response(
-    #             {"error": "Profile not found for this user. Please register first."},
-    #             status=status.HTTP_404_NOT_FOUND
-    #         )
-    #     return profile
 
     def get(self, request, *args, **kwargs):
         """
-        Override GET to return a proper error message if no profile exists.
+        Override GET to return a clear error if profile is missing.
         """
-        user = request.user
-        profile = getattr(user, "profile", None)
-        if profile is None:
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
             return Response(
                 {"error": "Profile not found for this user. Please register first."},
                 status=status.HTTP_404_NOT_FOUND
@@ -256,6 +271,33 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+
+
+    # def get_object(self):
+    #     user = self.request.user
+    #     profile = getattr(user, "profile", None)
+    #     if profile is None:
+    #         raise NotFound("Profile not found for this user. Please register first.")
+    #     return profile
+
+
+    # def get(self, request, *args, **kwargs):
+    #     """
+    #     Override GET to return a proper error message if no profile exists.
+    #     """
+    #     user = request.user
+    #     profile = getattr(user, "profile", None)
+    #     if profile is None:
+    #         return Response(
+    #             {"error": "Profile not found for this user. Please register first."},
+    #             status=status.HTTP_404_NOT_FOUND
+    #         )
+
+    #     serializer = self.get_serializer(profile)
+    #     return Response(serializer.data)
+
+
+
 # class ProfileView(generics.RetrieveUpdateAPIView):
 #     """
 #     API for logged-in users to view and update their profile.
@@ -313,3 +355,203 @@ class LogoutView(APIView):
     #         return Response({"error": "Invalid token or already blacklisted."}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# api/views.py
+
+# class SaveFcmTokenView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        token = request.data.get("token")
+        if not token:
+            return Response({"detail": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Remove token from other users (if exists)
+        DeviceToken.objects.filter(token=token).exclude(user=request.user).delete()
+
+        # Create or update for current user
+        DeviceToken.objects.update_or_create(token=token, defaults={"user": request.user})
+        return Response({"detail": "Token saved successfully"})
+
+# class SaveFcmTokenView(views.APIView):
+#     permission_classes = [permissions.IsAuthenticated]
+
+#     def post(self, request):
+#         token = request.data.get("token")
+#         if not token:
+#             return Response({"detail": "token required"}, status=status.HTTP_400_BAD_REQUEST)
+#         DeviceToken.objects.update_or_create(token=token, defaults={"user": request.user})
+#         return Response({"detail": "saved"})
+
+
+# views.py
+# class DeviceTokenView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = DeviceTokenSerializer(data=request.data)
+        if serializer.is_valid():
+            # Ensure one token per user
+            token_obj, created = DeviceToken.objects.update_or_create(
+                token=serializer.validated_data['token'],
+                defaults={'user': request.user}
+            )
+            return Response({"detail": "Token saved successfully"}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        # List all tokens for the current user
+        tokens = DeviceToken.objects.filter(user=request.user)
+        serializer = DeviceTokenSerializer(tokens, many=True)
+        return Response(serializer.data)
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+def send_notice_notification(request):
+    """
+    Send a push notification to all registered device tokens using bulk send.
+    Expects JSON body:
+    {
+        "title": "Notification title",
+        "body": "Notification body",
+        "data": { "key": "value", ... }  # optional
+    }
+    """
+    title = request.data.get("title")
+    body = request.data.get("body")
+    data = request.data.get("data", {})
+
+    if not title or not body:
+        return Response({"error": "Both title and body are required."}, status=400)
+
+    # Get all device tokens
+    tokens = list(DeviceToken.objects.values_list("token", flat=True))
+    if not tokens:
+        return Response({"message": "No device tokens found."}, status=200)
+
+    # Firebase allows up to 500 tokens per send_multicast call
+    BATCH_SIZE = 500
+    success_count = 0
+    failed_tokens = []
+
+    for i in range(0, len(tokens), BATCH_SIZE):
+        batch_tokens = tokens[i:i + BATCH_SIZE]
+
+        message = messaging.MulticastMessage(
+            notification=messaging.Notification(
+                title=title,
+                body=body
+            ),
+            tokens=batch_tokens,
+            data=data
+        )
+
+        response = messaging.send_multicast(message)
+        success_count += response.success_count
+
+        # Add failed tokens to list
+        for idx, resp in enumerate(response.responses):
+            if not resp.success:
+                failed_tokens.append(batch_tokens[idx])
+
+    return Response({
+        "message": f"Notification sent to {success_count} devices.",
+        "failed_tokens": failed_tokens  # optional for debugging
+    })
+
+
+
+
+
+# @api_view(['POST'])
+# @permission_classes([IsAdminUser])
+# def send_notice_notification(request):
+#     """
+#     Send a push notification to all registered device tokens.
+#     Expects JSON body:
+#     {
+#         "title": "Notification title",
+#         "body": "Notification body",
+#         "data": { "key": "value", ... }  # optional
+#     }
+#     """
+#     title = request.data.get("title")
+#     body = request.data.get("body")
+#     data = request.data.get("data", {})
+
+#     # Get all active device tokens
+#     if not title or not body:
+#         return Response({"error": "Both title and body are required"}, status=400)
+
+#     tokens = DeviceToken.objects.values_list("token", flat=True)
+#     success_count = 0
+#     failed_tokens = []
+
+#     for token in tokens:
+#         response = send_fcm_notification(token, title, body, data)
+#         if response:
+#             success_count += 1
+#         else:
+#             failed_tokens.append(token)
+
+#     return Response({
+#         "message": f"Notification sent to {success_count} devices.",
+#         "failed_tokens": failed_tokens  # optional, for debugging
+#     })   
+
+
+
+
+
+
+
+
+
+    # for token in tokens:
+    #     if send_fcm_notification(token, title, body, data):
+    #         success_count += 1
+
+    # return Response({"message": f"Notification sent to {success_count} devices."})
+
+
+
+
+
+class EventViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for managing Events.
+    - Anyone can list or retrieve events.
+    - Only admin can create, update, or delete.
+    """
+    queryset = Event.objects.all()
+    serializer_class = EventSerializer
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy"]:
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+
+# class EventListCreateView(generics.ListCreateAPIView):
+#     queryset = Event.objects.all()
+#     serializer_class = EventSerializer
+
+#     def get_permissions(self):
+#         if self.request.method == "POST":
+#             # Only admin can create events
+#             return [IsAdminUser()]
+#         # Everyone can GET the list
+#         return [AllowAny()]
+
+
+# class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     queryset = Event.objects.all()
+#     serializer_class = EventSerializer
+
+#     def get_permissions(self):
+#         if self.request.method in ["PUT", "PATCH", "DELETE"]:
+#             # Only admin can edit or delete
+#             return [IsAdminUser()]
+#         # Everyone can view
+#         return [AllowAny()]
