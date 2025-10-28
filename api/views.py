@@ -205,10 +205,12 @@ class LoginView(APIView):
 
         # Save or update device token
         if device_token:
-            DeviceToken.objects.update_or_create(
-                token=device_token,
-                defaults={'user': user}
-            )
+            # Prevent storing blank or invalid tokens
+            if device_token.strip():
+                DeviceToken.objects.update_or_create(
+                    token=device_token.strip(),
+                    defaults={'user': user}
+                )
 
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)

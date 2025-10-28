@@ -1,3 +1,68 @@
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+from .models import Event, Notice
+from .utils import send_fcm_to_all
+
+
+@receiver(post_save, sender=Event)
+def notify_on_event_create(sender, instance, created, **kwargs):
+    """
+    Sends a push notification to all devices when a new Event is created.
+    """
+    if created:
+        send_fcm_to_all(
+            title=f"New Event: {instance.event_title}",
+            body=f"{instance.event_detail[:100]}...",  # show first 100 chars of detail
+            data={"event_id": str(instance.id)}
+        )
+
+
+@receiver(post_save, sender=Notice)
+def notify_on_notice_create(sender, instance, created, **kwargs):
+    """
+    Sends a push notification to all devices when a new Notice is created.
+    """
+    if created:
+        send_fcm_to_all(
+            title=f"New Notice: {instance.title}",
+            body=f"{instance.body[:100]}..." if hasattr(instance, "body") and instance.body else "Tap to view details.",
+            data={"notice_id": str(instance.id)}
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # from django.db.models.signals import post_save
 # from django.dispatch import receiver
 # from django.contrib.auth.models import User
