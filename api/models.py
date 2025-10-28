@@ -71,15 +71,28 @@ class Routine(models.Model):
         ('Wednesday', 'Wednesday'),
         ('Thursday', 'Thursday'),
         ('Friday', 'Friday'),
-        ('Saturday', 'Saturday'),
+        # ('Saturday', 'Saturday'),
     ]
+
+    SEMESTER_CHOICES = [
+        ('1', '1st Semester'),
+        ('2', '2nd Semester'),
+        ('3', '3rd Semester'),
+        ('4', '4th Semester'),
+        ('5', '5th Semester'),
+        ('6', '6th Semester'),
+        ('7', '7th Semester'),
+        ('8', '8th Semester'),
+    ]
+
+    semester = models.CharField(max_length=2, choices=SEMESTER_CHOICES)
     day = models.CharField(max_length=10, choices=DAYS_OF_WEEK)
+    subject = models.CharField(max_length=100)
     start_time = models.TimeField()
     end_time = models.TimeField()
-    subject = models.CharField(max_length=100)
 
     def __str__(self):
-        return f"{self.day} | {self.subject} ({self.start_time} - {self.end_time})"
+        return f"{self.semester} | {self.day} | {self.subject} ({self.start_time} - {self.end_time})"
 
 
 class Profile(models.Model):

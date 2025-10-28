@@ -90,8 +90,10 @@ class NoticeViewSet(viewsets.ModelViewSet):
 class RoutineViewSet(viewsets.ModelViewSet):
     """
     API endpoint for managing Routines.
+    - Normal users see only routines of their semester.
     - Anyone can read routines.
     - Only admin can create, update, or delete.
+    - Optional: filter by day (e.g., ?day=Monday)
     """
 
     queryset = Routine.objects.all().order_by('day', 'start_time')
@@ -101,17 +103,55 @@ class RoutineViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [ReadOnly()]  # Anyone can see the routine
-        return [IsAdminUser()]
+        return [permissions.IsAdminUser()]  # Only admin can edit
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        user = self.request.user
 
-        # Optional: Filter by day if needed
+        #  Filter where Normal users see only routines of their semester
+        if user.is_authenticated and not user.is_staff:
+            try:
+                profile = Profile.objects.get(user=user)
+                queryset = queryset.filter(semester=str(profile.semester))
+            except Profile.DoesNotExist:
+                queryset = queryset.none()  # no profile, no data
+
+        # Optional: filter by day (for dropdown in Flutter)
         day = self.request.query_params.get("day", None)
         if day:
             queryset = queryset.filter(day__iexact=day)
 
-        return queryset
+        # Filter by semester query param (admins only)
+        semester = self.request.query_params.get("semester", None)
+        if semester and user.is_staff:
+            queryset = queryset.filter(semester=str(semester))
+
+        # Always return ordered by day and time
+        return queryset.order_by('day', 'start_time')
+
+    def create(self, request, *args, **kwargs):
+        """
+        Allow bulk creation of multiple Routine entries at once.
+        Accepts either a single JSON object or a list of objects.
+        """
+        is_bulk = isinstance(request.data, list)
+        serializer = self.get_serializer(data=request.data, many=is_bulk)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+
+    # def get_queryset(self):
+    #     queryset = super().get_queryset()
+
+    #     # Optional: Filter by day if needed
+    #     day = self.request.query_params.get("day", None)
+    #     if day:
+    #         queryset = queryset.filter(day__iexact=day)
+
+    #     return queryset
 
     
 

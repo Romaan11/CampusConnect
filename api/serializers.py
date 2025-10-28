@@ -19,7 +19,22 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
         fields = ['first_name', 'last_name', 'roll_no', 'semester', 'dob', 'address', 'image', 'shift', 'programme', 'contact_no']    # 'email', 'name',
-        # read_only_fields = ['first_name', 'last_name','name', 'roll_no', 'semester', 'dob', 'address', 'shift']
+
+
+    def validate(self, attrs):
+        # Only allow 'image' to be updated
+        forbidden_fields = set(attrs.keys()) - {'image'}
+        if forbidden_fields:
+            raise ValidationError(
+                {field: "This field cannot be updated." for field in forbidden_fields}
+            )
+        return attrs
+        # read_only_fields = [
+        #     'first_name', 'last_name', 'roll_no', 'semester',
+        #     'dob', 'address', 'shift', 'programme', 'contact_no'
+        # ]  # make all fields read-only except image
+
+
 
  
 
