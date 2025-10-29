@@ -47,8 +47,8 @@ INSTALLED_APPS = [
 
 
     # customized apps
-    "api",
-    # "api.apps.ApiConfig",
+    # "api",
+    "api.apps.ApiConfig",
 
     
 ]
@@ -186,3 +186,6 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),                 # Use Bearer <token> format
 }
 # You can increase REFRESH_TOKEN_LIFETIME to timedelta(days=30) if you want users to stay logged in for a month.
+
+
+

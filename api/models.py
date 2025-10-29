@@ -135,6 +135,7 @@ class AdmissionRecord(models.Model):
     shift = models.CharField(max_length=10) #choices=Profile.SHIFT_CHOICES,  default="day"
     programme = models.CharField(max_length=100, default="")  
     contact_no = models.CharField(max_length=15, default="")
+    image = models.ImageField(upload_to='admission_images/', null=True, blank=True)
 
     def __str__(self):
         return f"Admission Record for {self.first_name} {self.last_name} ({self.roll_no})"

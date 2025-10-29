@@ -27,6 +27,11 @@ class ApiConfig(AppConfig):
     name = 'api'
 
     def ready(self):
+        """
+        This ensures:
+        - Firebase initializes (only once)
+        - Django loads all signals (user/profile + notifications)
+        """
         # Initialize Firebase if not already
         if not firebase_admin._apps:
             cred_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "NOTICE/firebase-adminsdk.json")
@@ -35,4 +40,5 @@ class ApiConfig(AppConfig):
             print("Firebase Admin initialized")
 
         # Import signals after Firebase is ready
-        import api.signals
+        # import api.signals
+        from . import signals 

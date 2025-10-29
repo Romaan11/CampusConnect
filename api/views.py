@@ -3,22 +3,25 @@ from django.contrib.auth.models import Group, User
 from rest_framework import viewsets, generics, status, permissions, views
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.exceptions import NotFound
 from django.utils import timezone
 from django.db.models import Q  
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from .utils import send_fcm_notification
+
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, RegisterSerializer, ProfileSerializer, EmailLoginSerializer, EventSerializer
+from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, ProfileSerializer, EmailLoginSerializer, EventSerializer, ChangePasswordSerializer, AdmissionRecordSerializer  #, RegisterSerializer
 
-from .models import Notice, Routine, Profile, DeviceToken, Event
+from .models import Notice, Routine, Profile, DeviceToken, Event, AdmissionRecord
 from .permissions import IsAdminUser, ReadOnly
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser #later added
 # from NOTICE.firebase_config import firebase_admin
@@ -143,73 +146,81 @@ class RoutineViewSet(viewsets.ModelViewSet):
 
 
 
-    # def get_queryset(self):
-    #     queryset = super().get_queryset()
-
-    #     # Optional: Filter by day if needed
-    #     day = self.request.query_params.get("day", None)
-    #     if day:
-    #         queryset = queryset.filter(day__iexact=day)
-
-    #     return queryset
-
     
-
-# Register endpoint (student)
-@method_decorator(csrf_exempt, name='dispatch')
-class RegisterView(generics.CreateAPIView):
+# Admin-only endpoint to create a new student admission
+class AdminAdmissionRecordViewSet(viewsets.ModelViewSet):
     """
-    Endpoint for registering new users.
-    Publicly accessible.
-    Validates entered details against AdmissionRecord.
-    If successful, creates both User and Profile.
+    Admin-only endpoint to create a new AdmissionRecord.
+    This automatically triggers:
+    - User creation
+    - Profile creation
+    - Email with credentials sent to student
     """
+    queryset = AdmissionRecord.objects.all()
+    serializer_class = AdmissionRecordSerializer
+    permission_classes = [IsAdminUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    queryset = User.objects.all()  # always define queryset for CreateAPIView
-    serializer_class = RegisterSerializer
-    permission_classes = [AllowAny]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]      #later added
-
+    # @action(detail=False, methods=['post'], url_path='create-student', permission_classes=[IsAdminUser])
     def create(self, request, *args, **kwargs):
+        """
+        Admin-only custom action to create a new student AdmissionRecord.
+        Triggers user/profile creation and sends email with temporary password.
+        """
         serializer = self.get_serializer(data=request.data)
-
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        user = serializer.save()  # This already creates the Profile inside serializer
-
-        # Optional: prepare a custom response
-        profile = Profile.objects.filter(user=user).first()
-        profile_data = {
-            "name": profile.name,
-            "email": user.email,
-            "semester": profile.semester,
-            "roll_no": profile.roll_no,
-            "shift": profile.shift,
-            "address": profile.address,
-            "contact_no": profile.contact_no,
-            "programme": profile.programme,
-        }
+        serializer.is_valid(raise_exception=True)
+        
+        admission_record = serializer.save()  # This triggers the post_save signal
 
         return Response({
-            "message": "Registration successful.",
-            "user": user.email,
-            "profile": profile_data
+            "message": "Admission record created successfully. User account will be created automatically and credentials sent via email.",
+            "admission_record": AdmissionRecordSerializer(admission_record).data
         }, status=status.HTTP_201_CREATED)
 
-        # serializer.is_valid(raise_exception=True)
-        # user = serializer.save()
 
-        # # Generate JWT tokens for the new user
-        # refresh = RefreshToken.for_user(user)
-        # return Response({
-        #     "message": "Registration Successful! Welcome aboard.",
-        #     "user": UserSerializer(user).data,
-        #     "profile": ProfileSerializer(user.profile).data,
-        #     "refresh": str(refresh),
-        #     "access": str(refresh.access_token),
-        # }, status=status.HTTP_201_CREATED)
-    
+
+# Register endpoint (student)
+# @method_decorator(csrf_exempt, name='dispatch')
+# class RegisterView(generics.CreateAPIView):
+#     """
+#     Endpoint for registering new users.
+#     Publicly accessible.
+#     Validates entered details against AdmissionRecord.
+#     If successful, creates both User and Profile.
+#     """
+
+#     queryset = User.objects.all()  # always define queryset for CreateAPIView
+#     serializer_class = RegisterSerializer
+#     permission_classes = [AllowAny]
+#     parser_classes = [MultiPartParser, FormParser, JSONParser]      #later added
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+
+#         if not serializer.is_valid():
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#         user = serializer.save()  # This already creates the Profile inside serializer
+
+#         # Optional: prepare a custom response
+#         profile = Profile.objects.filter(user=user).first()
+#         profile_data = {
+#             "name": profile.name,
+#             "email": user.email,
+#             "semester": profile.semester,
+#             "roll_no": profile.roll_no,
+#             "shift": profile.shift,
+#             "address": profile.address,
+#             "contact_no": profile.contact_no,
+#             "programme": profile.programme,
+#         }
+
+#         return Response({
+#             "message": "Registration successful.",
+#             "user": user.email,
+#             "profile": profile_data
+#         }, status=status.HTTP_201_CREATED)
+
 
 
 # -------------------- LOGIN (email + password) --------------------
@@ -263,21 +274,6 @@ class LoginView(APIView):
         },status=status.HTTP_200_OK)
 
 
-
-    # permission_classes = [AllowAny]
-
-    # def post(self, request):
-    #     serializer = EmailLoginSerializer(data=request.data)
-    #     serializer.is_valid(raise_exception=True)
-    #     user = serializer.validated_data['user']
-
-    #     refresh = RefreshToken.for_user(user)
-    #     return Response({
-    #         "user": UserSerializer(user).data,
-    #         "profile": ProfileSerializer(user.profile).data,
-    #         "refresh": str(refresh),
-    #         "access": str(refresh.access_token),
-    #     }, status=status.HTTP_200_OK)
     
 
 
@@ -315,47 +311,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return Response(serializer.data)
 
 
-    # def get_object(self):
-    #     user = self.request.user
-    #     profile = getattr(user, "profile", None)
-    #     if profile is None:
-    #         raise NotFound("Profile not found for this user. Please register first.")
-    #     return profile
 
-
-    # def get(self, request, *args, **kwargs):
-    #     """
-    #     Override GET to return a proper error message if no profile exists.
-    #     """
-    #     user = request.user
-    #     profile = getattr(user, "profile", None)
-    #     if profile is None:
-    #         return Response(
-    #             {"error": "Profile not found for this user. Please register first."},
-    #             status=status.HTTP_404_NOT_FOUND
-    #         )
-
-    #     serializer = self.get_serializer(profile)
-    #     return Response(serializer.data)
-
-
-
-# class ProfileView(generics.RetrieveUpdateAPIView):
-#     """
-#     API for logged-in users to view and update their profile.
-#     """
-#     serializer_class = ProfileSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_object(self):
-#         user = self.request.user
-#         # If profile doesn’t exist, create one lazily
-#         if not hasattr(user, "profile"):
-#             return Profile.objects.create(user=user)
-#         return user.profile
-
-    # def get_object(self):
-    #     return self.request.user.profile
 
 @method_decorator(csrf_exempt, name='dispatch')
 class LogoutView(APIView):
@@ -385,16 +341,6 @@ class LogoutView(APIView):
                 {"error": "Invalid or already blacklisted token."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
-
-    # def post(self, request):
-    #     try:
-    #         refresh_token = request.data["refresh"]
-    #         token = RefreshToken(refresh_token)
-    #         token.blacklist()
-    #         return Response({"detail": "Successfully logged out."}, status=status.HTTP_205_RESET_CONTENT)
-    #     except Exception:
-    #         return Response({"error": "Invalid token or already blacklisted."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # api/views.py
@@ -504,62 +450,6 @@ def send_notice_notification(request):
 
 
 
-
-
-# @api_view(['POST'])
-# @permission_classes([IsAdminUser])
-# def send_notice_notification(request):
-#     """
-#     Send a push notification to all registered device tokens.
-#     Expects JSON body:
-#     {
-#         "title": "Notification title",
-#         "body": "Notification body",
-#         "data": { "key": "value", ... }  # optional
-#     }
-#     """
-#     title = request.data.get("title")
-#     body = request.data.get("body")
-#     data = request.data.get("data", {})
-
-#     # Get all active device tokens
-#     if not title or not body:
-#         return Response({"error": "Both title and body are required"}, status=400)
-
-#     tokens = DeviceToken.objects.values_list("token", flat=True)
-#     success_count = 0
-#     failed_tokens = []
-
-#     for token in tokens:
-#         response = send_fcm_notification(token, title, body, data)
-#         if response:
-#             success_count += 1
-#         else:
-#             failed_tokens.append(token)
-
-#     return Response({
-#         "message": f"Notification sent to {success_count} devices.",
-#         "failed_tokens": failed_tokens  # optional, for debugging
-#     })   
-
-
-
-
-
-
-
-
-
-    # for token in tokens:
-    #     if send_fcm_notification(token, title, body, data):
-    #         success_count += 1
-
-    # return Response({"message": f"Notification sent to {success_count} devices."})
-
-
-
-
-
 class EventViewSet(viewsets.ModelViewSet):
     """
     API endpoint for managing Events.
@@ -575,25 +465,63 @@ class EventViewSet(viewsets.ModelViewSet):
         return [AllowAny()]
 
 
-# class EventListCreateView(generics.ListCreateAPIView):
-#     queryset = Event.objects.all()
-#     serializer_class = EventSerializer
+class ChangePasswordView(APIView):
+    """
+    Change password endpoint with browsable API form.
+    Allow authenticated users to change their password.
+    Requires old_password, new_password, confirm_new_password.
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
 
-#     def get_permissions(self):
-#         if self.request.method == "POST":
-#             # Only admin can create events
-#             return [IsAdminUser()]
-#         # Everyone can GET the list
-#         return [AllowAny()]
+    def get_serializer(self):
+        return self.serializer_class()
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        old_password = serializer.validated_data['old_password']
+        new_password = serializer.validated_data['new_password']
+        confirm_new_password = serializer.validated_data['confirm_new_password']
+
+        # Validate all fields
+        if not old_password or not new_password or not confirm_new_password:
+            return Response(
+                {"error": "All fields are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if old password is correct
+        if not user.check_password(old_password):
+            return Response(
+                {"error": "Old password is incorrect."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if new passwords match
+        if new_password != confirm_new_password:
+            return Response(
+                {"error": "New passwords do not match."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Prevent reusing the same password
+        if old_password == new_password:
+            return Response(
+                {"error": "New password cannot be the same as the old password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Save new password
+        user.set_password(new_password)
+        user.save()
+
+        return Response(
+            {"message": "Password changed successfully."}, status=status.HTTP_200_OK
+            )
 
 
-# class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     queryset = Event.objects.all()
-#     serializer_class = EventSerializer
 
-#     def get_permissions(self):
-#         if self.request.method in ["PUT", "PATCH", "DELETE"]:
-#             # Only admin can edit or delete
-#             return [IsAdminUser()]
-#         # Everyone can view
-#         return [AllowAny()]
+

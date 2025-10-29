@@ -17,6 +17,7 @@ router.register(r'groups', views.GroupViewSet)
 router.register(r'notices', views.NoticeViewSet)
 router.register(r'routines', views.RoutineViewSet, basename='routine')
 router.register(r'events', views.EventViewSet, basename='event')
+router.register(r'admission-records', views.AdminAdmissionRecordViewSet, basename='admissionrecord')
 
 
 
@@ -30,10 +31,12 @@ def custom_api_root(request, format=None):
         "notices": reverse('notice-list', request=request, format=format),
         "routines": reverse('routine-list', request=request, format=format),
         "events": reverse('event-list', request=request, format=format),
+        "admission-records": reverse('admissionrecord-list', request=request, format=format),
         "auth": {
-            "register": reverse('register', request=request, format=format),
+            # "register": reverse('register', request=request, format=format),
             "login": reverse('login', request=request, format=format),   # custom email login
             "logout": reverse('logout', request=request, format=format), # use real logout view
+            "change_password": reverse('change_password', request=request, format=format),
             "token_refresh": reverse('token_refresh', request=request, format=format),
             "profile": reverse('profile', request=request, format=format),
             "send_notice": reverse('send-notice', request=request, format=format),
@@ -54,9 +57,11 @@ urlpatterns = [
     
 
     # Authentication endpoints: /api/auth/
-    path('auth/register/', views.RegisterView.as_view(), name='register'),
+    # path('auth/register/', views.RegisterView.as_view(), name='register'),
     path('auth/login/', views.LoginView.as_view(), name='login'),   # use custom login
     path('auth/logout/', views.LogoutView.as_view(), name='logout'), # custom logout
+    path('auth/change-password/', views.ChangePasswordView.as_view(), name='change_password'),
+
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),  # login
     path('auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # refresh token
     path('auth/profile/', views.ProfileView.as_view(), name='profile'),
