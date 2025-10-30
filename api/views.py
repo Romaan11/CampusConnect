@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.db.models import Q  
 from rest_framework.decorators import api_view, permission_classes, action
 from .utils import send_fcm_notification
+from rest_framework.generics import GenericAPIView
 
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
@@ -19,7 +20,7 @@ from django.contrib import messages
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, ProfileSerializer, EmailLoginSerializer, EventSerializer, ChangePasswordSerializer, AdmissionRecordSerializer  #, RegisterSerializer
+from api.serializers import GroupSerializer, UserSerializer, NoticeSerializer, RoutineSerializer, ProfileSerializer, EmailLoginSerializer, EventSerializer, ChangePasswordSerializer, AdmissionRecordSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, ResetPasswordSerializer  #, RegisterSerializer, ResendCodeSerializer
 
 from .models import Notice, Routine, Profile, DeviceToken, Event, AdmissionRecord
 from .permissions import IsAdminUser, ReadOnly
@@ -179,49 +180,6 @@ class AdminAdmissionRecordViewSet(viewsets.ModelViewSet):
 
 
 
-# Register endpoint (student)
-# @method_decorator(csrf_exempt, name='dispatch')
-# class RegisterView(generics.CreateAPIView):
-#     """
-#     Endpoint for registering new users.
-#     Publicly accessible.
-#     Validates entered details against AdmissionRecord.
-#     If successful, creates both User and Profile.
-#     """
-
-#     queryset = User.objects.all()  # always define queryset for CreateAPIView
-#     serializer_class = RegisterSerializer
-#     permission_classes = [AllowAny]
-#     parser_classes = [MultiPartParser, FormParser, JSONParser]      #later added
-
-#     def create(self, request, *args, **kwargs):
-#         serializer = self.get_serializer(data=request.data)
-
-#         if not serializer.is_valid():
-#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-#         user = serializer.save()  # This already creates the Profile inside serializer
-
-#         # Optional: prepare a custom response
-#         profile = Profile.objects.filter(user=user).first()
-#         profile_data = {
-#             "name": profile.name,
-#             "email": user.email,
-#             "semester": profile.semester,
-#             "roll_no": profile.roll_no,
-#             "shift": profile.shift,
-#             "address": profile.address,
-#             "contact_no": profile.contact_no,
-#             "programme": profile.programme,
-#         }
-
-#         return Response({
-#             "message": "Registration successful.",
-#             "user": user.email,
-#             "profile": profile_data
-#         }, status=status.HTTP_201_CREATED)
-
-
 
 # -------------------- LOGIN (email + password) --------------------
 User = get_user_model()
@@ -341,56 +299,6 @@ class LogoutView(APIView):
                 {"error": "Invalid or already blacklisted token."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-
-# api/views.py
-
-# class SaveFcmTokenView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        token = request.data.get("token")
-        if not token:
-            return Response({"detail": "Token is required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Remove token from other users (if exists)
-        DeviceToken.objects.filter(token=token).exclude(user=request.user).delete()
-
-        # Create or update for current user
-        DeviceToken.objects.update_or_create(token=token, defaults={"user": request.user})
-        return Response({"detail": "Token saved successfully"})
-
-# class SaveFcmTokenView(views.APIView):
-#     permission_classes = [permissions.IsAuthenticated]
-
-#     def post(self, request):
-#         token = request.data.get("token")
-#         if not token:
-#             return Response({"detail": "token required"}, status=status.HTTP_400_BAD_REQUEST)
-#         DeviceToken.objects.update_or_create(token=token, defaults={"user": request.user})
-#         return Response({"detail": "saved"})
-
-
-# views.py
-# class DeviceTokenView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        serializer = DeviceTokenSerializer(data=request.data)
-        if serializer.is_valid():
-            # Ensure one token per user
-            token_obj, created = DeviceToken.objects.update_or_create(
-                token=serializer.validated_data['token'],
-                defaults={'user': request.user}
-            )
-            return Response({"detail": "Token saved successfully"}, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def get(self, request):
-        # List all tokens for the current user
-        tokens = DeviceToken.objects.filter(user=request.user)
-        serializer = DeviceTokenSerializer(tokens, many=True)
-        return Response(serializer.data)
 
 
 
@@ -524,4 +432,86 @@ class ChangePasswordView(APIView):
 
 
 
+class ForgotPasswordView(GenericAPIView):
+    serializer_class = ForgotPasswordSerializer
+    permission_classes = [AllowAny]
+    parser_classes = [FormParser, MultiPartParser] 
 
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response({"success": True, "message": result}, status=status.HTTP_200_OK)
+
+
+
+class ResetPasswordView(GenericAPIView):
+    serializer_class = ResetPasswordSerializer
+    permission_classes = [AllowAny]
+    parser_classes = [FormParser, MultiPartParser] 
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        return Response({"success": True, "message": result}, status=status.HTTP_200_OK)
+
+
+
+# class ResendCodeView(GenericAPIView):
+#     serializer_class = ResendCodeSerializer
+#     permission_classes = [AllowAny]
+
+#     def post(self, request):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         result = serializer.save()
+#         return Response({"success": True, "message": result}, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+# Register endpoint (student)
+# @method_decorator(csrf_exempt, name='dispatch')
+# class RegisterView(generics.CreateAPIView):
+#     """
+#     Endpoint for registering new users.
+#     Publicly accessible.
+#     Validates entered details against AdmissionRecord.
+#     If successful, creates both User and Profile.
+#     """
+
+#     queryset = User.objects.all()  # always define queryset for CreateAPIView
+#     serializer_class = RegisterSerializer
+#     permission_classes = [AllowAny]
+#     parser_classes = [MultiPartParser, FormParser, JSONParser]      #later added
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+
+#         if not serializer.is_valid():
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#         user = serializer.save()  # This already creates the Profile inside serializer
+
+#         # Optional: prepare a custom response
+#         profile = Profile.objects.filter(user=user).first()
+#         profile_data = {
+#             "name": profile.name,
+#             "email": user.email,
+#             "semester": profile.semester,
+#             "roll_no": profile.roll_no,
+#             "shift": profile.shift,
+#             "address": profile.address,
+#             "contact_no": profile.contact_no,
+#             "programme": profile.programme,
+#         }
+
+#         return Response({
+#             "message": "Registration successful.",
+#             "user": user.email,
+#             "profile": profile_data
+#         }, status=status.HTTP_201_CREATED)

@@ -126,3 +126,37 @@ def send_fcm_to_all(title, body, data=None):
     print(f"Sent to {len(tokens)} devices; {success_count} succeeded, {failure_count} failed.")
     return {"success_count": success_count, "failure_count": failure_count}
 
+
+
+
+
+
+
+
+# For forgot password email
+# api/utils.py
+import threading
+from django.core.mail import send_mail
+from django.conf import settings
+# from .utils import send_reset_email_async
+
+def send_reset_email_async(email, code, name):
+    """
+    Sends the password reset email in a separate thread (async).
+    """
+    subject = "CampusConnect Password Reset Code"
+    message = (
+        f"Hello {name},\n\n"
+        f"Here is your 6-digit password reset code:\n\n"
+        f"{code}\n\n"
+        f"This code will expire in 10 minutes.\n\n"
+        f"Thank you,\nCampusConnect Team"
+    )
+
+    # Threading to send email in background
+    thread = threading.Thread(
+        target=send_mail,
+        args=(subject, message, settings.DEFAULT_FROM_EMAIL, [email]),
+        kwargs={'fail_silently': False}
+    )
+    thread.start()

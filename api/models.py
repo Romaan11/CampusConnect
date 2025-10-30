@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import User
 
+from django.utils import timezone
+from datetime import timedelta
 
 
 # # Added new DeviceToken model
@@ -124,6 +126,7 @@ class Profile(models.Model):
 # This table stores admission data (used for verification)    
 #yo already existed table ho and yo model ko data fetch garera verify garxa app ma register garda
 class AdmissionRecord(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True)
     first_name = models.CharField(max_length=100, default="")
     last_name = models.CharField(max_length=100, default="")
     # email = models.EmailField(unique=True)
@@ -153,3 +156,16 @@ class Event(models.Model):
     
     def __str__(self):
         return self.event_title
+
+
+
+class PasswordResetCode(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='reset_code')
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        return timezone.now() > self.created_at + timedelta(minutes=10)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.code}"

@@ -7,8 +7,11 @@ from django.utils.crypto import get_random_string
 from django.core.mail import send_mail
 from django.conf import settings
 
+import traceback
 
 
+
+# -------------------- Event & Notice notifications --------------------
 @receiver(post_save, sender=Event)
 def notify_on_event_create(sender, instance, created, **kwargs):
     """
@@ -38,6 +41,7 @@ def notify_on_notice_create(sender, instance, created, **kwargs):
 
 
 
+# -------------------- AdmissionRecord signals --------------------
 
 # for automatically creating profile and user when record is entered in admissionrecord
 # and sends email and temporary password to user's email
@@ -48,80 +52,97 @@ def create_or_update_user_profile(sender, instance, created, **kwargs):
     - Create a corresponding User and Profile
     - Send email with email + temporary password
     """
+    try:
+        # Create a clean username (capitalized, with space)
+        base_username = f"{instance.first_name.capitalize()} {instance.last_name.capitalize()}"
 
-    # Create a clean username (capitalized, with space)
-    username = f"{instance.first_name.capitalize()} {instance.last_name.capitalize()}"
+        # Ensure unique username (avoid duplicate entry error)
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username} {counter}"
+            counter += 1
 
-    # Check if a user already exists with this email
-    user = User.objects.filter(email=instance.email).first()
+        # Check if a user already exists with this email
+        user = User.objects.filter(email=instance.email).first()
 
-    if not user:
-        # Generate random temporary password
-        random_password = get_random_string(length=8)
+        if not user:
+            # Generate random temporary password
+            random_password = get_random_string(length=8)
 
-        # Create new user
-        user = User.objects.create_user(
-            username=username,
-            email=instance.email,
-            first_name=instance.first_name.capitalize(),
-            last_name=instance.last_name.capitalize(),
-            password=random_password,
-            is_staff=False,
-        )
-
-        print(f"New user created: {user.username} | Password: {random_password}")
-
-        # Send account details via email
-        subject = "Your CampusConnect Account Credentials"
-        message = (
-            f"Hello {instance.first_name.capitalize()},\n\n"
-            f"Your CampusConnect account has been created successfully.\n\n"
-            f"Email: {instance.email}\n"
-            f"Password: {random_password}\n\n"
-            f"Please log in and change your password after your first login.\n\n"
-            f"Thank you,\nCampusConnect Admin Team"
-        )
-
-        try:
-            send_mail(
-                subject=subject,
-                message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[instance.email],
-                fail_silently=False,
+            # Create new user
+            user = User.objects.create_user(
+                username=username,
+                email=instance.email,
+                first_name=instance.first_name.capitalize(),
+                last_name=instance.last_name.capitalize(),
+                password=random_password,
+                is_staff=False,
             )
-            print(f"Password email sent to {instance.email}")
-        except Exception as e:
-            print(f"Failed to send email to {instance.email}: {e}")
 
-    else:
-        # Update existing user details
-        user.first_name = instance.first_name.capitalize()
-        user.last_name = instance.last_name.capitalize()
-        user.email = instance.email
-        user.username = username
-        user.save(update_fields=["first_name", "last_name", "email", "username"])
-        print(f"Updated existing user: {user.username}")
+            print(f"New user created: {user.username} | Password: {random_password}")
 
-    # Sync Profile
-    Profile.objects.update_or_create(
-        user=user,
-        defaults={
-            "first_name": instance.first_name.capitalize(),
-            "last_name": instance.last_name.capitalize(),
-            "name": username,
-            "email": instance.email,
-            "roll_no": instance.roll_no,
-            "semester": instance.semester,
-            "dob": instance.dob,
-            "address": instance.address,
-            "shift": instance.shift,
-            "programme": instance.programme,
-            "contact_no": instance.contact_no,
-            "image": instance.image,
-        },
-    )
-    print(f"Profile synced for: {user.username}")
+            # Send account details via email
+            subject = "Your CampusConnect Account Credentials"
+            message = (
+                f"Hello {instance.first_name.capitalize()},\n\n"
+                f"Your CampusConnect account has been created successfully.\n\n"
+                f"Email: {instance.email}\n"
+                f"Password: {random_password}\n\n"
+                f"Please log in and change your password after your first login.\n\n"
+                f"Thank you,\nCampusConnect Admin Team"
+            )
+
+            try:
+                send_mail(
+                    subject=subject,
+                    message=message,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[instance.email],
+                    fail_silently=False,
+                )
+                print(f"Password email sent to {instance.email}")
+            except Exception as e:
+                print(f"Failed to send email to {instance.email}: {e}")
+
+        else:
+            # Update existing user details
+            user.first_name = instance.first_name.capitalize()
+            user.last_name = instance.last_name.capitalize()
+            user.email = instance.email
+            user.username = username
+            # Keep the same username if user already existed
+            user.save(update_fields=["first_name", "last_name", "email", "username"])   #
+            print(f"Updated existing user: {user.username}")
+
+        # LINK AdmissionRecord TO USER
+        if getattr(instance, 'user', None) != user:
+            instance.user = user
+            instance.save(update_fields=['user'])
+
+        # Sync Profile
+        Profile.objects.update_or_create(
+            user=user,
+            defaults={
+                "first_name": instance.first_name.capitalize(),
+                "last_name": instance.last_name.capitalize(),
+                "name": username,
+                "email": instance.email,
+                "roll_no": instance.roll_no,
+                "semester": instance.semester,
+                "dob": instance.dob,
+                "address": instance.address,
+                "shift": instance.shift,
+                "programme": instance.programme,
+                "contact_no": instance.contact_no,
+                "image": instance.image,
+            },
+        )
+        print(f"Profile synced for: {user.username}")
+
+    except Exception:
+        print("AdmissionRecord signal failed:")
+        traceback.print_exc()
 
 
 @receiver(post_delete, sender=AdmissionRecord)
@@ -130,8 +151,23 @@ def delete_related_user_profile(sender, instance, **kwargs):
     Deletes User & Profile when AdmissionRecord is deleted.
     """
     try:
-        user = User.objects.get(email=instance.email)
-        user.delete()
-        print(f"Deleted user and profile for {instance.email}")
-    except User.DoesNotExist:
-        pass
+        # Try finding user by both email and name
+        user = User.objects.filter(
+            Q(email=instance.email) | Q(username__icontains=instance.first_name)
+        ).first()
+
+        if user:
+            user.delete()
+            print(f"Deleted user and profile for {instance.email}")
+    except Exception as e:
+        print(f"Error deleting related user: {e}")   
+
+
+
+    #     user = User.objects.get(email=instance.email)
+    #     user.delete()
+    #     print(f"Deleted user and profile for {instance.email}")
+    # except User.DoesNotExist:
+    #     pass
+
+

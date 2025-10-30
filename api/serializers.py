@@ -1,14 +1,21 @@
 from django.contrib.auth.models import Group, User
-from api.models import Notice, Routine, Profile, AdmissionRecord, Event, DeviceToken
+from api.models import Notice, Routine, Profile, AdmissionRecord, Event, DeviceToken, PasswordResetCode
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.utils import timezone
 from datetime import timedelta, datetime
+from django.utils.crypto import get_random_string
+from django.core.mail import send_mail
+from django.conf import settings
 
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
+
+from .utils import send_reset_email_async
+
+
 
 
 # -------------------- PROFILE --------------------
@@ -212,6 +219,144 @@ class AdmissionRecordSerializer(serializers.ModelSerializer):
 
 
 
+# ------------------ Forgot Password Serializer ------------------
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No account found with this email.")
+        return value
+
+    def save(self):
+        email = self.validated_data['email']
+        user = User.objects.get(email=email)
+
+        # Generate new 6-digit code
+        code = get_random_string(length=6, allowed_chars='0123456789')
+
+        # Save or update code
+        PasswordResetCode.objects.update_or_create(
+            user=user, defaults={'code': code, 'created_at': timezone.now()}
+        )
+
+        # Send email asynchronously (we’ll implement this)
+        send_reset_email_async(user.email, code, user.first_name or user.username)
+
+        return {"message": "Password reset code sent to your email."}
+        
+        # # Save or update code
+        # PasswordResetCode.objects.update_or_create(user=user, defaults={'code': code})
+
+        # # Send email
+        # subject = "CampusConnect Password Reset Code"
+        # message = (
+        #     f"Hello {user.first_name or user.username},\n\n"
+        #     f"Here is your 6-digit password reset code:\n\n"
+        #     f"{code}\n\n"
+        #     f"This code will expire in 10 minutes.\n\n"
+        #     f"Thank you,\nCampusConnect Team"
+        # )
+        # send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+
+        # return {"message": "Password reset code sent to your email."}
+
+
+# ------------------ Reset Password Serializer ------------------
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    code = serializers.CharField(max_length=6)
+    new_password = serializers.CharField(write_only=True)
+    confirm_password = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_password']:
+            raise serializers.ValidationError("Passwords do not match.")
+        return data
+
+    def save(self):
+        email = self.validated_data['email']
+        code = self.validated_data['code']
+        new_password = self.validated_data['new_password']
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User not found.")
+
+        try:
+            reset_obj = PasswordResetCode.objects.get(user=user, code=code)
+        except PasswordResetCode.DoesNotExist:
+            raise serializers.ValidationError("Invalid code.")
+
+        if reset_obj.is_expired():
+            reset_obj.delete()
+            raise serializers.ValidationError("This code has expired. Please try again.")    #Please request a new one.
+
+        # Update password
+        user.set_password(new_password)
+        user.save()
+        reset_obj.delete()  # remove code after use
+
+        return {"message": "Password has been successfully reset."}
+
+
+
+
+
+
+
+
+# # ------------------ Resend Code Serializer ------------------
+# class ResendCodeSerializer(serializers.Serializer):
+#     email = serializers.EmailField()
+
+#     def validate_email(self, value):
+#         if not User.objects.filter(email=value).exists():
+#             raise serializers.ValidationError("No account found with this email.")
+#         return value
+
+#     def save(self):
+#         email = self.validated_data['email']
+#         user = User.objects.get(email=email)
+
+#         try:
+#             reset_obj = PasswordResetCode.objects.get(user=user)
+#         except PasswordResetCode.DoesNotExist:
+#             raise serializers.ValidationError("No previous reset request found. Please request a new code first.")
+
+#         # Check expiration
+#         if not reset_obj.is_expired():
+#             raise serializers.ValidationError("Your current code is still valid. Please check your email.")
+
+#         # Generate new code
+#         new_code = get_random_string(length=6, allowed_chars='0123456789')
+#         reset_obj.code = new_code
+#         reset_obj.created_at = timezone.now()
+#         reset_obj.save()
+
+#         # Send email again
+#         subject = "CampusConnect Password Reset Code (Resent)"
+#         message = (
+#             f"Hello {user.first_name or user.username},\n\n"
+#             f"Your previous code expired. Here’s a new one:\n\n"
+#             f"{new_code}\n\n"
+#             f"This code will expire in 10 minutes.\n\n"
+#             f"Thank you,\nCampusConnect Team"
+#         )
+#         send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+
+#         return {"message": "A new reset code has been sent to your email."}
+
+
+
+
+ 
+
+
+
+
+
 
 
 
@@ -363,9 +508,6 @@ class AdmissionRecordSerializer(serializers.ModelSerializer):
 #             )
 
 #         return user
-
-
- 
 
 
 

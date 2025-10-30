@@ -11,6 +11,7 @@ from api import views
 
 #the r in this means raw data and tyo hale pani hunxa na hale pani
 # Main router for ViewSets
+# --------------------- Main Router ---------------------
 router = DefaultRouter()
 router.register(r'users', views.UserViewSet, basename='user') 
 router.register(r'groups', views.GroupViewSet)
@@ -21,6 +22,7 @@ router.register(r'admission-records', views.AdminAdmissionRecordViewSet, basenam
 
 
 
+# --------------------- Custom API Root ---------------------
 # Custom API Root
 @api_view(['GET'])
 def custom_api_root(request, format=None):
@@ -41,12 +43,17 @@ def custom_api_root(request, format=None):
             "profile": reverse('profile', request=request, format=format),
             "send_notice": reverse('send-notice', request=request, format=format),
 
+            # ------------------ NEW: Forgot/Reset Password ------------------
+            "forgot_password": reverse('forgot-password', request=request, format=format),
+            "reset_password": reverse('reset-password', request=request, format=format),
+            # "resend_code": reverse('resend-code', request=request, format=format),
 
             # optional logout link (manual implementation needed if you want real JWT blacklist logout)
             # "logout": request.build_absolute_uri('/api-auth/logout/'), 
         }
     })
 
+# --------------------- URL Patterns ---------------------
 urlpatterns = [
 
     # Override API root
@@ -68,10 +75,10 @@ urlpatterns = [
     # Send notification endpoint
     path('auth/send-notice/', views.send_notice_notification, name='send-notice'),
 
-    # path('auth/device-token/', views.SaveFcmTokenView.as_view(), name='save-fcm-token'),
-    # path('events/', views.EventListCreateView.as_view(), name='event-list'),
-    # path('events/<int:pk>/', views.EventDetailView.as_view(), name='event-detail'),
-    # path('auth/device-tokens/', views.DeviceTokenView.as_view(), name='device-token'),
+    # ------------------ NEW: Forgot/Reset Password Endpoints ------------------    
+    path('auth/forgot-password/', views.ForgotPasswordView.as_view(), name='forgot-password'),
+    path('auth/reset-password/', views.ResetPasswordView.as_view(), name='reset-password'),
+    # path('auth/resend-code/', views.ResendCodeView.as_view(), name='resend-code'),
 
 
     # Optional: DRF Browsable API login/logout 
