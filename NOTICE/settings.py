@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-3o-xgy7i5t+fry&p8rtp$2ks9k31w2s^(io#otz)qj6rjbgm4d
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -97,14 +97,21 @@ WSGI_APPLICATION = 'NOTICE.wsgi.application'
 #     }
 # }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'NAME': 'app_test',
+#         'USER': 'root',
+#         'PASSWORD': 'root',
+#         'HOST': 'localhost',
+#         'PORT': '3306',
+#     }
+# }
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'app_test',
-        'USER': 'root',
-        'PASSWORD': 'root',
-        'HOST': 'localhost',
-        'PORT': '3306',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -179,7 +186,7 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),   # Short-lived access token
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),       # Short-lived access token
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),      # User stays logged in for 7 days
     'ROTATE_REFRESH_TOKENS': False,                   # Don’t auto-rotate tokens
     'BLACKLIST_AFTER_ROTATION': True,                 # Allow logout blacklisting
@@ -188,4 +195,14 @@ SIMPLE_JWT = {
 # You can increase REFRESH_TOKEN_LIFETIME to timedelta(days=30) if you want users to stay logged in for a month.
 
 
+#  EMAIL CONFIGURATION 
 
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'projectadm6@gmail.com' #  your Gmail address
+EMAIL_HOST_PASSWORD = 'wlwy ugnh mpwi tdwv' #  16-digit App Password from Google
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+WHITENOISE_USE_FINDERS = True

@@ -200,7 +200,7 @@ class LoginView(APIView):
 
         email = serializer.validated_data['email']
         password = serializer.validated_data['password']
-        device_token = request.data.get('device_token')  # ADDED for device token
+        device_token = request.data.get('fcm_token')  # ADDED for device token
 
         # Authenticate using email
         try:
